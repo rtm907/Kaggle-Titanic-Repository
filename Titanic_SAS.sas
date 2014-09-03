@@ -1,6 +1,9 @@
+/*  Kaggle Titanic challenge SAS exercise. */
+
 LIBNAME TTN_LIB "C:\games\Kaggle\Titanic\";
 RUN;
 
+* Import Train data;
 PROC IMPORT OUT=TTN_LIB.TITANIC_SET
 	DATAFILE="C:\games\Kaggle\Titanic\train.csv"
 	DBMS=csv
@@ -8,6 +11,14 @@ PROC IMPORT OUT=TTN_LIB.TITANIC_SET
     getnames=yes;
 RUN;
 
+/* Setup data:
+	"Master" corresponds to boy, "Miss" to girl or young woman or an unmarried woman,
+	and "Mrs" to a married woman.
+	"C" is for having embarked from Cherbourg; it increases survival chanc slightly.
+
+	Constructing a straight Gender - Child (or Age) - Class model produces 
+	almost equivalent results.
+*/
 DATA TTN_LIB.TITANIC_SET;
 	set TTN_LIB.TITANIC_SET;
 	if Age = . then Age = 29.6991176;
@@ -31,10 +42,13 @@ DATA TTN_LIB.TITANIC_SET;
 	if index(Name,'Mrs') > 0 then mrs = 1; else mrs = 0;
 RUN;
 
+/*
 proc means data = TTN_LIB.TITANIC_SET (KEEP= Pclass fare) MIN MEAN MAX;
 	class Pclass;
 run;
+*/
 
+/* Create logit model.*/
 PROC LOGISTIC DATA=TTN_LIB.TITANIC_SET 
 		OUTMODEL=TTN_LIB.LOGITRESULT;
 	MODEL Survived (event='1') = Parch EmbCher master miss mrs
@@ -42,6 +56,7 @@ PROC LOGISTIC DATA=TTN_LIB.TITANIC_SET
 	TITLE 'Titanic Survival Logit Model ';
 RUN;
 
+/* Import Test dataset. */
 PROC IMPORT OUT=TTN_LIB.TEST_SET
 	DATAFILE="C:\games\Kaggle\Titanic\test.csv"
 	DBMS=csv
@@ -49,6 +64,7 @@ PROC IMPORT OUT=TTN_LIB.TEST_SET
     getnames=yes;
 RUN;
 
+/* Setup Test dataset. */
 DATA TTN_LIB.TEST_SET;
 	set TTN_LIB.TEST_SET;
 	if Age = . then Age = 29.6991176;
@@ -72,26 +88,31 @@ DATA TTN_LIB.TEST_SET;
 	if index(Name,'Mrs') > 0 then mrs = 1; else mrs = 0;
 RUN;
 
+/* Score Train set for checking purposes. */
 proc logistic inmodel=TTN_LIB.LOGITRESULT;
   score clm data = TTN_LIB.TITANIC_SET OUT=TTN_LIB.LOGITPRED_TRAIN;
 run;
 
+/* Score Test set. */
 proc logistic inmodel=TTN_LIB.LOGITRESULT;
   score clm data = TTN_LIB.TEST_SET OUT=TTN_LIB.LOGITPRED;
 run;
 
+/* Generate return values. */
 DATA TTN_LIB.LOGITPRED;
 	SET TTN_LIB.LOGITPRED;
 	RENAME I_Survived = Survived;
 	if P_1 > 0.44 then My_Survived = 1; else My_Survived = 0; 
 RUN;
 
+/* For checking purposes.*/
 DATA TTN_LIB.LOGITPRED_TRAIN;
 	SET TTN_LIB.LOGITPRED_TRAIN;
 	RENAME I_Survived = Pred_Survived;
 	if P_1 > 0.44 then My_Survived = 1; else My_Survived = 0; 
 RUN;
 
+/* Uncomment to check the predictions for Train.*/
 /*
 PROC PRINT DATA=TTN_LIB.LOGITPRED_TRAIN (KEEP = PassengerID Survived 
 		Pred_Survived My_Survived);
@@ -99,11 +120,13 @@ PROC PRINT DATA=TTN_LIB.LOGITPRED_TRAIN (KEEP = PassengerID Survived
 RUN;
 */
 
+/* Setup return values for writing to file.*/
 proc sql;
     create view TTN_LIB.vw_ds1 as 
         select PassengerId,Survived from TTN_LIB.LOGITPRED;
 quit;
 
+/* Produce file for submission.*/
 proc export data=TTN_LIB.vw_ds1
    outfile="C:\games\Kaggle\Titanic\output.csv"
    dbms=csv
